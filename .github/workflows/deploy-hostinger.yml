@@ -32,7 +32,23 @@ jobs:
 
       - name: Save Docker image
         run: |
-          docker save assessor-de-lotacao:latest | gzip > image.tar.gz
+          echo "📦 Salvando imagem Docker..."
+          docker save assessor-de-lotacao:latest -o image.tar
+          echo "📦 Comprimindo imagem..."
+          gzip -f image.tar
+          echo "✅ Imagem salva:"
+          ls -lh image.tar.gz
+          # Verificar se o arquivo foi criado corretamente
+          if [ ! -f "image.tar.gz" ]; then
+            echo "❌ Erro: Arquivo image.tar.gz não foi criado!"
+            exit 1
+          fi
+          # Verificar integridade do arquivo
+          if ! gzip -t image.tar.gz; then
+            echo "❌ Erro: Arquivo image.tar.gz está corrompido!"
+            exit 1
+          fi
+          echo "✅ Arquivo image.tar.gz válido e pronto para upload"
 
       - name: 📤 Upload Docker image to server
         uses: appleboy/scp-action@v0.1.7
@@ -83,9 +99,64 @@ jobs:
               exit 1
             fi
             
-            # Carregar imagem Docker
-            echo "📦 Carregando imagem Docker..."
-            docker load < image.tar.gz || exit 1
+            # Verificar se o arquivo existe e tem tamanho válido
+            if [ ! -f "image.tar.gz" ]; then
+              echo "❌ Erro: Arquivo image.tar.gz não encontrado!"
+              exit 1
+            fi
+            
+            FILE_SIZE=$(stat -f%z image.tar.gz 2>/dev/null || stat -c%s image.tar.gz 2>/dev/null || echo "0")
+            if [ "$FILE_SIZE" -lt 1000 ]; then
+              echo "❌ Erro: Arquivo image.tar.gz parece estar vazio ou corrompido (tamanho: $FILE_SIZE bytes)"
+              exit 1
+            fi
+            
+            echo "📦 Arquivo encontrado: $(du -h image.tar.gz | cut -f1)"
+            
+            # Verificar integridade do arquivo comprimido
+            echo "🔍 Verificando integridade do arquivo..."
+            if ! gzip -t image.tar.gz 2>/dev/null; then
+              echo "❌ Erro: Arquivo image.tar.gz está corrompido!"
+              exit 1
+            fi
+            
+            # Descomprimir e carregar imagem Docker
+            echo "📦 Descomprimindo e carregando imagem Docker..."
+            
+            # Método 1: Pipe direto (mais eficiente)
+            if gunzip -c image.tar.gz | docker load 2>&1; then
+              echo "✅ Imagem carregada com sucesso (método pipe)!"
+            else
+              echo "⚠️ Método pipe falhou, tentando método alternativo..."
+              # Método 2: Descomprimir primeiro, depois carregar
+              gunzip -f image.tar.gz || {
+                echo "❌ Erro ao descomprimir arquivo!"
+                exit 1
+              }
+              
+              if [ ! -f "image.tar" ]; then
+                echo "❌ Erro: Arquivo image.tar não foi criado após descompressão!"
+                exit 1
+              fi
+              
+              docker load < image.tar || {
+                echo "❌ Erro ao carregar imagem Docker!"
+                echo "📋 Verificando Docker:"
+                docker --version || true
+                docker images | head -5 || true
+                exit 1
+              }
+              
+              echo "✅ Imagem carregada com sucesso (método alternativo)!"
+            fi
+            
+            # Verificar se a imagem foi carregada
+            if docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "^${IMAGE_NAME}$"; then
+              echo "✅ Imagem verificada no Docker: ${IMAGE_NAME}"
+            else
+              echo "⚠️ Imagem pode não ter sido carregada corretamente"
+              docker images | grep assessor || true
+            fi
             
             # Parar e remover container antigo se existir
             if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
@@ -93,9 +164,6 @@ jobs:
               docker stop "$CONTAINER_NAME" || true
               docker rm "$CONTAINER_NAME" || true
             fi
-            
-            # Remover imagem antiga se existir (opcional)
-            docker rmi "$IMAGE_NAME" 2>/dev/null || true
             
             # Criar e iniciar novo container
             echo "🚀 Iniciando novo container..."
@@ -123,8 +191,9 @@ jobs:
               echo "⚠️ Container pode não estar respondendo corretamente"
             fi
             
-            # Limpar arquivo de imagem
-            rm -f image.tar.gz || true
+            # Limpar arquivos de imagem
+            echo "🧹 Limpando arquivos temporários..."
+            rm -f image.tar.gz image.tar || true
             
             echo "✅ Deploy concluído com sucesso!"
             echo "📦 Container: $CONTAINER_NAME"
