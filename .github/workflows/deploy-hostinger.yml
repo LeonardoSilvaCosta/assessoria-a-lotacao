@@ -46,28 +46,44 @@ jobs:
       - name: Save Docker image
         run: |
           echo "📦 Salvando imagem Docker..."
-          docker save assessor-de-lotacao:latest -o image.tar || {
+          WORKSPACE="${{ github.workspace }}"
+          cd "$WORKSPACE"
+          
+          # Criar arquivo com permissões corretas
+          docker save assessor-de-lotacao:latest -o "$WORKSPACE/image.tar" || {
             echo "❌ Erro ao salvar imagem!"
             echo "📋 Verificando Docker:"
             docker --version
             docker images
             exit 1
           }
+          
           echo "📦 Comprimindo imagem..."
-          gzip -f image.tar
+          gzip -f "$WORKSPACE/image.tar"
+          
+          echo "✅ Ajustando permissões do arquivo..."
+          chmod 644 "$WORKSPACE/image.tar.gz" || true
+          
           echo "✅ Imagem salva:"
-          ls -lh image.tar.gz
+          ls -lh "$WORKSPACE/image.tar.gz"
+          echo "📁 Diretório de trabalho: $WORKSPACE"
+          
           # Verificar se o arquivo foi criado corretamente
-          if [ ! -f "image.tar.gz" ]; then
+          if [ ! -f "$WORKSPACE/image.tar.gz" ]; then
             echo "❌ Erro: Arquivo image.tar.gz não foi criado!"
+            echo "📋 Arquivos no diretório atual:"
+            ls -la "$WORKSPACE"
             exit 1
           fi
+          
           # Verificar integridade do arquivo
-          if ! gzip -t image.tar.gz; then
+          if ! gzip -t "$WORKSPACE/image.tar.gz"; then
             echo "❌ Erro: Arquivo image.tar.gz está corrompido!"
             exit 1
           fi
+          
           echo "✅ Arquivo image.tar.gz válido e pronto para upload"
+          echo "📁 Caminho completo: $WORKSPACE/image.tar.gz"
 
       - name: 📤 Upload Docker image to server
         uses: appleboy/scp-action@v0.1.7
@@ -80,6 +96,9 @@ jobs:
           timeout: 600s
           source: "image.tar.gz"
           target: ${{ secrets.DEPLOY_PATH || 'app/assessor-de-lotacao' }}
+          strip_components: 0
+          overwrite: true
+          debug: false
 
       - name: 📤 Upload docker-compose.yml
         uses: appleboy/scp-action@v0.1.7
