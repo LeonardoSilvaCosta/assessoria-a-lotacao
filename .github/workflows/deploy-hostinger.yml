@@ -24,16 +24,35 @@ jobs:
         with:
           context: .
           push: false
+          load: true
           tags: assessor-de-lotacao:latest
           build-args: |
             GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Verify Docker image exists
+        run: |
+          echo "🔍 Verificando se a imagem foi criada..."
+          docker images | grep assessor-de-lotacao || {
+            echo "❌ Imagem não encontrada!"
+            echo "📋 Imagens disponíveis:"
+            docker images
+            exit 1
+          }
+          echo "✅ Imagem encontrada:"
+          docker images assessor-de-lotacao:latest
+
       - name: Save Docker image
         run: |
           echo "📦 Salvando imagem Docker..."
-          docker save assessor-de-lotacao:latest -o image.tar
+          docker save assessor-de-lotacao:latest -o image.tar || {
+            echo "❌ Erro ao salvar imagem!"
+            echo "📋 Verificando Docker:"
+            docker --version
+            docker images
+            exit 1
+          }
           echo "📦 Comprimindo imagem..."
           gzip -f image.tar
           echo "✅ Imagem salva:"
