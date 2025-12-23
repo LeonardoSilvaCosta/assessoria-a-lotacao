@@ -6,7 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "docker:build": "docker build -t assessor-de-lotacao:latest --build-arg GEMINI_API_KEY=$GEMINI_API_KEY .",
+    "docker:run": "docker run -d -p 9966:9966 --name assessor-de-lotacao --restart unless-stopped assessor-de-lotacao:latest",
+    "docker:stop": "docker stop assessor-de-lotacao",
+    "docker:rm": "docker rm assessor-de-lotacao",
+    "docker:logs": "docker logs -f assessor-de-lotacao",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down"
   },
   "dependencies": {
     "react": "^19.2.3",
@@ -21,6 +28,7 @@
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "terser": "^5.36.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }
